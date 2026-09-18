@@ -3,8 +3,9 @@ import { BookOpen, Clock, FileText, CheckCircle, XCircle, Award, ArrowRight, Arr
 import { questions } from './data/questions';
 import { User } from './types';
 
-import { db, collections } from './lib/firebase';
+import { db, collections, auth } from './lib/firebase';
 import { collection, addDoc, getDocs, query, orderBy, Timestamp } from 'firebase/firestore';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 
 export default function App() {
   const [view, setView] = useState<'home' | 'exam' | 'result' | 'admin'>('home');
@@ -310,6 +311,22 @@ function HomeView({ onStart, onAdminLogin }: { onStart: (user: User) => void, on
     onStart({ name, icNumber, email, district, date, questionSet });
   };
 
+  const handleGoogleLogin = async () => {
+    if (!auth) {
+      alert('Sistem log masuk tidak dikonfigurasi dengan betul. Sila semak tetapan Firebase anda.');
+      return;
+    }
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      setShowAdminModal(false);
+      onAdminLogin();
+    } catch (error: any) {
+      console.error('Ralat log masuk Google:', error);
+      alert('Gagal log masuk dengan Google: ' + error.message);
+    }
+  };
+
   const handleAdminAccess = () => {
     if (adminPassword === 'admin123') {
       setShowAdminModal(false);
@@ -499,7 +516,7 @@ function HomeView({ onStart, onAdminLogin }: { onStart: (user: User) => void, on
               <div className="pt-8 border-t border-slate-100">
                 <button 
                   type="button"
-                  onClick={() => alert('Integrasi log masuk Google (Gmail) untuk admin akan diaktifkan apabila disambung ke pangkalan data rasmi.')}
+                  onClick={handleGoogleLogin}
                   className="w-full flex items-center justify-center gap-3 py-4 border-2 border-slate-100 rounded-2xl hover:bg-slate-50 transition-colors font-semibold text-slate-700 text-lg"
                 >
                   <svg viewBox="0 0 24 24" className="w-6 h-6">
