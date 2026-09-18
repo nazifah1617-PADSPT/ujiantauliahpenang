@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BookOpen, Clock, FileText, CheckCircle, XCircle, Award, ArrowRight, ArrowLeft, Printer, Search, Star, AlertTriangle } from 'lucide-react';
-import { questions } from './data/questions';
+import { questionBank, subjects } from './data/questions';
 import { User } from './types';
 
 import { db, collections, auth } from './lib/firebase';
@@ -11,6 +11,7 @@ export default function App() {
   const [view, setView] = useState<'home' | 'exam' | 'result' | 'admin'>('home');
   const [user, setUser] = useState<User | null>(null);
   const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [currentQuestions, setCurrentQuestions] = useState<typeof questionBank[string]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState(30 * 60); // 30 minutes in seconds
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,6 +34,28 @@ export default function App() {
     setTimeRemaining(30 * 60);
     setAnswers({});
     setCurrentQuestionIndex(0);
+
+    // Combine all subjects into a single array
+    let allExamQuestions: (typeof questionBank[string][0] & { subject: string })[] = [];
+    
+    subjects.forEach(sub => {
+      const qs = questionBank[sub] || [];
+      if (qs.length > 0) {
+        // Shuffle the questions for this subject
+        const shuffled = [...qs].sort(() => 0.5 - Math.random());
+        // For now, load up to 13 questions per subject to make roughly 100 questions total
+        const selected = shuffled.slice(0, 13).map(q => ({ ...q, subject: sub }));
+        allExamQuestions = [...allExamQuestions, ...selected];
+      }
+    });
+    
+    if (allExamQuestions.length === 0) {
+      alert("Maaf, set soalan belum dimuat naik. Sila hubungi admin.");
+      setView('home');
+      return;
+    }
+    
+    setCurrentQuestions(allExamQuestions);
   };
 
   const handleAnswerSelect = (questionId: number, answerIndex: number) => {
@@ -40,7 +63,7 @@ export default function App() {
   };
 
   const handleNext = () => {
-    if (currentQuestionIndex < questions.length - 1) {
+    if (currentQuestionIndex < currentQuestions.length - 1) {
       setCurrentQuestionIndex((prev) => prev + 1);
     }
   };
@@ -53,7 +76,7 @@ export default function App() {
 
   const calculateScore = () => {
     let score = 0;
-    questions.forEach((q) => {
+    currentQuestions.forEach((q) => {
       if (answers[q.id] === q.correctAnswer) {
         score += 1;
       }
@@ -66,7 +89,7 @@ export default function App() {
     setIsSubmitting(true);
     
     const correctCount = calculateScore();
-    const markPercentage = Math.round((correctCount / questions.length) * 100);
+    const markPercentage = Math.round((correctCount / currentQuestions.length) * 100);
     
     if (db && user) {
       try {
@@ -78,7 +101,7 @@ export default function App() {
           set: user.questionSet.replace('Set ', ''),
           mark: markPercentage,
           correct: correctCount,
-          total: questions.length,
+          total: currentQuestions.length,
           timestamp: Timestamp.now(),
           dateString: new Date().toLocaleString('ms-MY', { 
             day: 'numeric', 
@@ -132,11 +155,13 @@ export default function App() {
 
         {view === 'exam' && (
           <div className="w-full max-w-4xl bg-white rounded-xl shadow-lg overflow-hidden">
-            <div className="bg-blue-900 text-white px-6 py-4 flex justify-between items-center border-b-4 border-yellow-500">
-              <div className="flex items-center gap-2">
+            <div className="bg-blue-900 text-white px-6 py-4 flex flex-col sm:flex-row justify-between items-center border-b-4 border-yellow-500 gap-3">
+              <div className="flex flex-col sm:flex-row items-center gap-2">
                 <FileText className="w-5 h-5 text-yellow-400" />
-                <span className="font-semibold hidden sm:inline">Soalan {currentQuestionIndex + 1} / {questions.length}</span>
-                <span className="font-semibold sm:hidden">{currentQuestionIndex + 1}/{questions.length}</span>
+                <span className="font-semibold text-lg text-yellow-400">{currentQuestions[currentQuestionIndex].subject}</span>
+                <span className="hidden sm:inline text-slate-300">|</span>
+                <span className="font-semibold hidden sm:inline">Soalan {currentQuestionIndex + 1} / {currentQuestions.length}</span>
+                <span className="font-semibold sm:hidden">{currentQuestionIndex + 1}/{currentQuestions.length}</span>
               </div>
               <div className="flex items-center gap-2 font-mono text-lg bg-blue-950 px-3 py-1 rounded-md text-yellow-400">
                 <Clock className="w-5 h-5" />
@@ -145,29 +170,29 @@ export default function App() {
             </div>
             
             <div className="p-6 md:p-8">
-              <h2 className="text-xl md:text-2xl font-medium text-slate-800 mb-6 leading-relaxed">
-                {questions[currentQuestionIndex].text}
+              <h2 className="text-xl md:text-2xl font-medium text-slate-800 mb-6 leading-relaxed" dir="rtl">
+                {currentQuestions[currentQuestionIndex].text}
               </h2>
               
-              <div className="space-y-3">
-                {questions[currentQuestionIndex].options.map((option, idx) => (
+              <div className="space-y-3" dir="rtl">
+                {currentQuestions[currentQuestionIndex].options.map((option, idx) => (
                   <label 
                     key={idx} 
                     className={`flex items-start gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
-                      answers[questions[currentQuestionIndex].id] === idx 
+                      answers[currentQuestions[currentQuestionIndex].id] === idx 
                         ? 'border-blue-600 bg-blue-50' 
                         : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50'
                     }`}
                   >
                     <input 
                       type="radio" 
-                      name={`question-${questions[currentQuestionIndex].id}`}
+                      name={`question-${currentQuestions[currentQuestionIndex].id}`}
                       value={idx}
-                      checked={answers[questions[currentQuestionIndex].id] === idx}
-                      onChange={() => handleAnswerSelect(questions[currentQuestionIndex].id, idx)}
-                      className="mt-1 w-5 h-5 text-blue-700 border-slate-300 focus:ring-blue-600 flex-shrink-0"
+                      checked={answers[currentQuestions[currentQuestionIndex].id] === idx}
+                      onChange={() => handleAnswerSelect(currentQuestions[currentQuestionIndex].id, idx)}
+                      className="mt-1 w-5 h-5 ml-4 text-blue-700 border-slate-300 focus:ring-blue-600 flex-shrink-0"
                     />
-                    <span className="text-slate-700 md:text-lg">{option}</span>
+                    <span className="text-slate-700 md:text-lg text-right">{option}</span>
                   </label>
                 ))}
               </div>
@@ -183,7 +208,7 @@ export default function App() {
                 <span className="hidden sm:inline">Sebelumnya</span>
               </button>
               
-              {currentQuestionIndex === questions.length - 1 ? (
+              {currentQuestionIndex === currentQuestions.length - 1 ? (
                 <button 
                   onClick={handleSubmitExam}
                   className="flex items-center gap-2 px-6 py-2 rounded-md font-bold text-blue-900 bg-yellow-400 hover:bg-yellow-500 transition-colors shadow-sm"
@@ -206,7 +231,7 @@ export default function App() {
             <div className="p-4 border-t border-slate-200 bg-white">
               <h3 className="text-sm font-semibold text-slate-500 mb-3 uppercase tracking-wider">Navigasi Soalan</h3>
               <div className="flex flex-wrap gap-2">
-                {questions.map((q, idx) => (
+                {currentQuestions.map((q, idx) => (
                   <button
                     key={q.id}
                     onClick={() => setCurrentQuestionIndex(idx)}
@@ -239,11 +264,11 @@ export default function App() {
               </div>
               <div className="flex justify-between items-center mt-6">
                 <div className="text-lg text-slate-600 font-medium">Markah Anda:</div>
-                <div className="text-4xl font-black text-blue-800">{calculateScore()} / {questions.length}</div>
+                <div className="text-4xl font-black text-blue-800">{calculateScore()} / {currentQuestions.length}</div>
               </div>
               <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between items-center">
                 <div className="text-lg text-slate-600 font-medium">Status:</div>
-                {calculateScore() >= (questions.length * 0.8) ? (
+                {calculateScore() >= (currentQuestions.length * 0.8) ? (
                   <div className="text-2xl font-bold text-blue-800 px-4 py-1 bg-blue-100 rounded-full flex items-center gap-2">
                     <CheckCircle className="w-6 h-6" /> LULUS
                   </div>
@@ -256,7 +281,7 @@ export default function App() {
             </div>
             
             <p className="text-slate-500 mb-8 px-4">
-              {calculateScore() >= (questions.length * 0.8) 
+              {calculateScore() >= (currentQuestions.length * 0.8) 
                 ? "Tahniah! Anda telah berjaya melepasi ujian ini dengan cemerlang." 
                 : "Dukacita dimaklumkan anda tidak melepasi markah lulus minimum (80%). Sila cuba lagi untuk mendapatkan sijil tauliah mengajar."}
             </p>
@@ -430,22 +455,25 @@ function HomeView({ onStart, onAdminLogin }: { onStart: (user: User) => void, on
             </div>
           </div>
 
-          <div>
-            <label htmlFor="questionSet" className="block text-sm font-bold text-slate-700 mb-1">
-              Set Soalan
-            </label>
-            <select 
-              id="questionSet"
-              value={questionSet}
-              onChange={(e) => setQuestionSet(e.target.value)}
-              className="w-full px-4 py-3 bg-white border-2 border-blue-400 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow text-slate-700 appearance-none font-medium"
-              style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%233b82f6\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M8 9l4-4 4 4m0 6l-4 4-4-4\' /%3E%3C/svg%3E")', backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.2em 1.2em' }}
-            >
-              <option value="">-- Sila Pilih Set --</option>
-              <option value="Set A">Set A</option>
-              <option value="Set B">Set B</option>
-              <option value="Set C">Set C</option>
-            </select>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="md:col-span-2">
+              <label htmlFor="questionSet" className="block text-sm font-bold text-slate-700 mb-1">
+                Set Soalan <span className="text-blue-500 font-normal text-xs ml-1">*Semua subjek akan diuji</span>
+              </label>
+              <select 
+                id="questionSet"
+                value={questionSet}
+                onChange={(e) => setQuestionSet(e.target.value)}
+                className="w-full px-4 py-3 bg-white border-2 border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow text-slate-700 appearance-none font-medium"
+                style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%2364748b\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M8 9l4-4 4 4m0 6l-4 4-4-4\' /%3E%3C/svg%3E")', backgroundPosition: 'right 0.75rem center', backgroundRepeat: 'no-repeat', backgroundSize: '1.2em 1.2em' }}
+              >
+                <option value="">-- Sila Pilih Set --</option>
+                <option value="Set A">Set A</option>
+                <option value="Set B">Set B</option>
+                <option value="Set C">Set C</option>
+                <option value="Set D">Set D</option>
+              </select>
+            </div>
           </div>
           
           <div className="pt-2 flex flex-col items-center">
@@ -696,7 +724,7 @@ function AdminView({ onLogout }: { onLogout: () => void }) {
                   <tr className="border-b border-yellow-100">
                     <th className="py-4 px-4 font-bold text-slate-700 w-24">RANK</th>
                     <th className="py-4 px-4 font-bold text-slate-700">NAMA PELAJAR</th>
-                    <th className="py-4 px-4 font-bold text-slate-700 w-24">SET</th>
+                    <th className="py-4 px-4 font-bold text-slate-700 w-24">SET SOALAN</th>
                     <th className="py-4 px-4 font-bold text-slate-700 w-32">MARKAH/BETUL</th>
                   </tr>
                 </thead>
@@ -744,7 +772,7 @@ function AdminView({ onLogout }: { onLogout: () => void }) {
                     <tr className="border-b border-red-100">
                       <th className="py-4 px-4 font-bold text-red-700">NAMA PELAJAR</th>
                       <th className="py-4 px-4 font-bold text-red-700">NO. KP & DAERAH</th>
-                      <th className="py-4 px-4 font-bold text-red-700 w-24">SET</th>
+                      <th className="py-4 px-4 font-bold text-red-700 w-24">SET SOALAN</th>
                       <th className="py-4 px-4 font-bold text-red-700 w-32">BETUL / %</th>
                     </tr>
                   </thead>
@@ -794,7 +822,7 @@ function AdminView({ onLogout }: { onLogout: () => void }) {
                     <th className="py-4 px-4 font-bold text-slate-600 w-16 text-center">BIL.</th>
                     <th className="py-4 px-4 font-bold text-slate-600">NAMA PELAJAR</th>
                     <th className="py-4 px-4 font-bold text-slate-600">NO. KP & DAERAH</th>
-                    <th className="py-4 px-4 font-bold text-slate-600 w-24">SET</th>
+                    <th className="py-4 px-4 font-bold text-slate-600 w-32">SET SOALAN</th>
                     <th className="py-4 px-4 font-bold text-slate-600 w-24">MARKAH</th>
                   </tr>
                 </thead>

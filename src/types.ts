@@ -1,5 +1,6 @@
 export interface Question {
   id: number;
+  subject?: string;
   text: string;
   options: string[];
   correctAnswer: number;
