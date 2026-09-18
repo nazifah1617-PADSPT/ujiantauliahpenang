@@ -1,0 +1,6 @@
+{
+  "name": "Ujian Online Tauliah Mengajar",
+  "description": "Sistem Ujian Online Tauliah Mengajar Agama Islam Negeri Pulau Pinang",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
